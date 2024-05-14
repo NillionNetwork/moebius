@@ -1,0 +1,73 @@
+"""\
+This file presents an MP-SPDZ implementation (including some bugfixes) of the Rabbit protocol
+described in the following paper:
+
+Eleftheria Makri, Dragos Rotaru, Frederik Vercauteren, and Sameer Wagh. 2021. Rabbit: Efficient
+Comparison for Secure Multi-Party Computation. In FC 2021: 25th International Conference on
+Financial Cryptography and Data Security, Part I (Lecture Notes in Computer Science, Vol. 12674),
+Nikita Borisov and Claudia Díaz (Eds.). Springer, Heidelberg, Germany, Virtual Event, 249–270.
+https://doi.org/10.1007/978-3-662-64322-8_12
+
+The binary addition protocol originates from the following paper:
+[1] SecureSCM. Deliverable D9.2, EU FP7 Project Secure Supply Chain Management (SecureSCM).
+https://faui1-files.cs.fau.de/filepool/publications/octavian_securescm/SecureSCM-D.9.2.pdf
+
+Note that the authors also provided some code here: https://github.com/rdragos/MP-SPDZ/tree/rabbit
+
+The current version of MP-SPDZ does not allow edaBits of the same bit-length as the prime
+bit-length; to get around this, Rabbit does compilation and execution separately:
+./compile.py rabbit -- --direct
+./Scripts/shamir.sh -P 18446744073709551557 rabbit---direct
+Alternatively, disable this bit-length check in the MP-SPDZ source code.
+"""
+
+from Compiler import floatingpoint
+from Compiler.util import bit_decompose
+
+PRIME = 18446744073709551557
+if get_program().prime != None:
+    PRIME = get_program().prime
+BIT_LENGTH = PRIME.bit_length()
+EDABIT_BIT_LENGTH = BIT_LENGTH
+
+
+def LTSfix(x, y):
+    return 1 - LTS(y, x)
+
+
+def LTS(x, y):
+    b = y + edabit0[0]
+    a = edabit1[0] - x
+    a = a.reveal()
+    b = b.reveal()
+    T = a + b
+    w1 = LTBits(b, edabit0[1])
+    w2 = LTBits(a, edabit1[1])
+    half_prime = (PRIME // 2) + 1
+    w3 = (T + half_prime) < (b + half_prime)
+    adder_result = BitAdder(edabit0[1], edabit1[1])
+    w4 = adder_result[-1]
+    w5 = LTBits(T, adder_result[:-1])
+    w = w1 + w2 + w3 - w4 - w5
+    return w
+
+
+def carry(b, a, superfluous_parameter):  # page 45 in [1]
+    return a[0].bit_and(b[0]), a[1] + a[0].bit_and(b[1])
+
+
+def BitAdder(r0_bits, r1_bits):  # Protocol 4.4 in [1]
+    ds = [[r0_bits[i].bit_xor(r1_bits[i]), r0_bits[i].bit_and(
+        r1_bits[i])] for i in range(EDABIT_BIT_LENGTH)]
+    cs = floatingpoint.PreOpL(carry, ds)
+    ss = [r0_bits[0].bit_xor(r1_bits[0])] + [(r0_bits[i].bit_xor(r1_bits[i]).bit_xor(
+        cs[i - 1][1])) for i in range(1, EDABIT_BIT_LENGTH)] + [cs[-1][1]]
+    return ss
+
+
+def LTBits(R, x):
+    R_bits = cint.bit_decompose(R, BIT_LENGTH)
+    y = [x[i].bit_xor(R_bits[i]) for i in range(BIT_LENGTH)]
+    z = floatingpoint.PreOpL(floatingpoint.or_op, y[::-1])[::-1] + [0]
+    w = [z[i] - z[i + 1] for i in range(BIT_LENGTH)]
+    return sum((1-R_bits[i]) & w[i] for i in range(BIT_LENGTH))
