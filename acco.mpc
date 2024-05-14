@@ -1,0 +1,57 @@
+"""
+This file presents an MP-SPDZ implementation of the ACCO protocol described in the following paper:
+
+Xiaoqi Duan, Vipul Goyal, Hanjun Li, Rafail Ostrovsky, Antigoni Polychroniadou, and Yifan Song.
+2021. ACCO: Algebraic Computation with Comparison. In Proceedings of the 2021 on Cloud Computing
+Security Workshop (Virtual Event, Republic of Korea) (CCSW ’21). Association for Computing
+Machinery, New York, NY, USA, 21–38. https://doi.org/10.1145/3474123.3486757
+
+ACCO insists on using Mersenne primes, and was originally designed for use with ATLAS
+31-bit: 2147483647
+61-bit: 2305843009213693951
+89-bit: 618970019642690137449562111
+Scripts/compile-run.py -E atlas --prime=2147483647 acco -- --direct
+"""
+
+from Compiler.util import bit_compose, bit_decompose
+
+PRIME = 618970019642690137449562111
+if get_program().prime != None:
+    PRIME = get_program().prime
+BIT_LENGTH = PRIME.bit_length()
+
+
+def Decompose(x):
+    r_bits = [sint.get_random_bit() for i in range(BIT_LENGTH)]
+    r = sint.bit_compose(r_bits)
+    return ((x + r).reveal(), r_bits)
+
+
+def BitComp(x_bits, r_bits):
+    cs = [x_bits[i] * (1 - r_bits[i]) for i in range(BIT_LENGTH)]
+    bs = [1 - r_bits[i] - x_bits[i] + 2 * r_bits[i] * x_bits[i]
+          for i in range(BIT_LENGTH)]
+    bit_length_recursion = BIT_LENGTH
+    while bit_length_recursion > 1:
+        temp0 = [cs[2*i + 1] + bs[2*i + 1] * cs[2*i]
+                 for i in range(bit_length_recursion // 2)]
+        temp1 = [bs[2*i + 1] * bs[2*i]
+                 for i in range(bit_length_recursion // 2)]
+        if bit_length_recursion % 2 == 0:
+            bit_length_recursion = bit_length_recursion // 2
+            cs = temp0
+            bs = temp1
+        else:
+            cs = temp0 + [cs[-1]]
+            bs = temp1 + [bs[-1]]
+            bit_length_recursion = (bit_length_recursion + 1) // 2
+    return cs[0]
+
+
+def LessThan(x, y):
+    z = 2*(x - y)
+    c, r_bits = Decompose(z)
+    c_bits = c.bit_decompose(BIT_LENGTH)
+    w = BitComp(r_bits, c_bits)
+    first_bit_xor = c_bits[0].bit_xor(r_bits[0])
+    return w.bit_xor(first_bit_xor)
