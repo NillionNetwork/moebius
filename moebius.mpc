@@ -1,0 +1,351 @@
+"""\
+This file presents a (preliminary) MP-SPDZ implementation of the Möbius protocol described in the
+following draft:
+
+Wicher Malten, Mehmet Ugurbil, and Miguel de Vega. "More efficient comparison protocols for MPC."
+Cryptology ePrint Archive (2023). https://eprint.iacr.org/2023/1934
+
+./compile.py moebius -- --direct
+./Scripts/atlas.sh -P 18446744073709551557 moebius---direct
+./compile.py -R 64 moebius -- --direct
+./Scripts/ring.sh moebius---direct
+"""
+
+from Compiler.util import bit_compose, bit_decompose
+import math
+import operator
+
+PRIME = 18446744073709551557
+if get_program().prime != None:
+    PRIME = get_program().prime
+BIT_LENGTH = PRIME.bit_length()
+
+ROUNDS = "log"
+
+# LOGMETHOD = "NISHIDE-OHTA"
+LOGMETHOD = "RABBIT"
+
+if ROUNDS == "constant":
+    BITDOMAIN = "ARITHMETIC"
+    ARITY = 3
+if ROUNDS == "log":
+    BITDOMAIN = "BINARY"
+    ARITY = 4
+
+BIT_LENGTH_DIVIDED = math.ceil(BIT_LENGTH / ARITY)
+
+
+def Hamming_weight(bitvector):
+    return sum(bitvector)
+
+
+def Hamming_sign(bitvector0, bitvector1):
+    return (-1)**(Hamming_weight(bitvector0) + Hamming_weight(bitvector1))
+
+
+def gen_bitvectors(length, var="None"):
+    if var == "ordered":
+        for i in range(2, length + 1):
+            for vec in gen_bitvectors_of_weight(i, length):
+                yield vec
+    else:
+        if length == 0:
+            yield ()
+        else:
+            for shorter in gen_bitvectors(length - 1):
+                yield shorter + (0,)
+                yield shorter + (1,)
+
+
+def gen_bitvectors_of_weight(weight, length):
+    if length == 0:
+        yield ()
+    else:
+        if weight > 0:
+            for shorter in gen_bitvectors_of_weight(weight - 1, length - 1):
+                yield (1,) + shorter
+        if weight < length:
+            for shorter in gen_bitvectors_of_weight(weight, length - 1):
+                yield (0,) + shorter
+
+
+def find_nonzero(vec):
+    for i in range(len(vec)):
+        if vec[i] == 1:
+            return i, vec[:i] + (0,) + vec[i+1:]
+
+
+def smaller_bitvectors(bitvector):
+    yield bitvector
+    for i in range(len(bitvector)):
+        if bitvector[i] == 1:
+            for x in smaller_bitvectors(bitvector[i+1:]):
+                yield bitvector[:i] + (0,) + x
+
+
+def compute_coefficient(index, f):
+    acc = 0
+    for vec0 in smaller_bitvectors(index[0]):
+        for vec1 in smaller_bitvectors(index[1]):
+            acc += Hamming_sign(vec0, vec1) * f(vec0, vec1)
+    acc *= Hamming_sign(index[0], index[1])
+    return acc
+
+
+def compute_all_coefficients(f):
+    coefficients = {}
+    for vec0 in gen_bitvectors(ARITY):
+        for vec1 in gen_bitvectors(ARITY):
+            index = (vec0, vec1)
+            coefficients[index] = compute_coefficient(index, f)
+    return coefficients
+
+
+def binary_operator_to_bits(f, x, y):
+    return int(f(bit_compose(x), bit_compose(y)))
+
+
+def one_time_function_preprocessing(var):
+    coeff_dics = []
+    if var == "constant":
+        functions = [operator.lt, operator.ne]
+    if var == "log":
+        functions = [operator.lt, operator.eq]
+    for non_binary_f in functions:
+        def f(x, y): return binary_operator_to_bits(non_binary_f, x, y)
+        coeff_dics.append(compute_all_coefficients(f))
+    return coeff_dics
+
+
+def create_n_ary_random(BIT_LENGTH, ARITY, var="None"):
+    (r, bits) = bitwise_rand(BIT_LENGTH)
+    if var == "LSB":
+        return (r, [bits, bits[0].bit_xor(bits[-1])])
+    if ARITY == 1:
+        return (r, bits)
+    bits = bits + [cint(0)] * (BIT_LENGTH_DIVIDED*ARITY - BIT_LENGTH)
+    bits_dics = create_bits_dic(bits)
+    return (r, bits_dics)
+
+
+def create_bits_dic(bits):
+    return [create_bits_dic_max_ARITY(bits[ARITY*i: ARITY*i + ARITY]) for i in range(BIT_LENGTH_DIVIDED)]
+
+
+def create_bits_dic_max_ARITY(bits):
+    bits_dic = {}
+    bits_dic[(0,)*ARITY] = 1
+    for i in range(ARITY):
+        bits_dic[(0,)*i + (1,) + (0,) * (ARITY - 1 - i)] = bits[i]
+    for vec in gen_bitvectors(ARITY, "ordered"):
+        (index, smaller) = find_nonzero(vec)
+        bits_dic[vec] = bits_dic[smaller] * bits[index]
+    return bits_dic
+
+
+def bitwise_rand_check(bits):
+    prime_bits = bin(PRIME - 1)[:1:-1]
+    zero_bits = [i for i in range(BIT_LENGTH) if prime_bits[i] == '0']
+    zero_bits.append(BIT_LENGTH)
+    acc = 0
+    for i in range(len(zero_bits)-2, -1, -1):
+        acc += sum((1 - bits[k])
+                   for k in range(zero_bits[i]+1, zero_bits[i+1]))
+        temp = sint.get_random_inverse()[0]
+        smaller = 1 - bits[zero_bits[i]] + acc
+        smaller_masked = smaller * temp
+
+        @if_(smaller_masked.reveal() == 0)
+        def _():
+            return False
+    return True
+
+
+def bitwise_rand(BIT_LENGTH):
+    bits = [sint.get_random_bit() for i in range(BIT_LENGTH)]
+    if bitwise_rand_check(bits) == True:
+        r = sint.bit_compose(bits)
+        return (r, bits)
+    else:
+        return bitwise_rand(BIT_LENGTH)
+
+
+def prefix_product_prep(number_of_factors):
+    r = []
+    r_inv = []
+    for i in range(number_of_factors):
+        ri, ri_inv = sint.get_random_inverse()
+        r.append(ri)
+        r_inv.append(ri_inv)
+    r2 = [r_inv[0]]
+    for i in range(1, number_of_factors):
+        r2.append(r[i-1] * r_inv[i])
+    return r, r2
+
+
+def preprocessing(ROUNDS, BIT_LENGTH):
+    if ROUNDS == "constant":
+        return [create_n_ary_random(BIT_LENGTH, ARITY), create_n_ary_random(BIT_LENGTH, 1, "LSB"), prefix_product_prep(BIT_LENGTH_DIVIDED)]
+    if ROUNDS == "log":
+        if LOGMETHOD == "RABBIT":
+            edabit_sharings = [sint.get_edabit(
+                BIT_LENGTH, True) for i in range(2)]
+            eda_sum = sint.ripple_carry_adder(
+                edabit_sharings[0][1], edabit_sharings[1][1])
+            for i in range(2):
+                edabit_sharings[i] = [edabit_sharings[i][0],
+                                      create_bits_dic(edabit_sharings[i][1])]
+            edabit_sharings.append(create_bits_dic(eda_sum[:-1]))
+            edabit_sharings.append(eda_sum[-1])
+            return edabit_sharings
+        if LOGMETHOD == "NISHIDE-OHTA":
+            return sint.get_edabit(BIT_LENGTH, True)
+
+
+def func_sharing_max_ARITY_partial(coeff_dic, c_bits_chunk):
+    partial_coeff_dic = {}
+
+    def c_bits_function(vec0):
+        return math.prod(c_bits_chunk[k] for k in range(ARITY) if vec0[k] == 1)
+    for vec in gen_bitvectors(ARITY):
+        partial_coeff_dic[vec] = sum(
+            [coeff_dic[vec0, vec] * c_bits_function(vec0) for vec0 in gen_bitvectors(ARITY)])
+    return partial_coeff_dic
+
+
+def func_sharing_max_ARITY(coeff_dic, c_bits_chunk, x_bits):
+    partial_coeff_dic = func_sharing_max_ARITY_partial(coeff_dic, c_bits_chunk)
+    if BITDOMAIN == "ARITHMETIC":
+        return sum(partial_coeff_dic[vec] * x_bits[vec] for vec in gen_bitvectors(ARITY))
+    if BITDOMAIN == "BINARY":
+        return sum(cbit(partial_coeff_dic[vec]) & x_bits[vec] for vec in gen_bitvectors(ARITY))
+
+
+def func_sharings(coeff_dics, c_bits, x_bits):
+    c_bits_chunks = [c_bits[a:a + ARITY] for a in range(0, len(c_bits), ARITY)]
+    c_bits_chunks[-1] = c_bits_chunks[-1] + \
+        [0]*(ARITY - len(c_bits_chunks[-1]))
+    return [[func_sharing_max_ARITY(coeff_dic, c_bits_chunks[i], x_bits[i]) for i in range(BIT_LENGTH_DIVIDED)] for coeff_dic in coeff_dics]
+
+
+def less_than(x, x2):
+    if ROUNDS == "constant":
+        return less_than_zero(x - x2)
+    else:
+        print_ln("executing log round protocol")
+        if LOGMETHOD == "RABBIT":  # this is our version of the Rabbit LTS protocol... ugh maar is niet perfectly correct. Beter NISHIDE-OHTA-V2 DOEN!!!
+            a_bits, _ = shifted_bit_decomp(x, 1, "provided", edabits[0])
+            b_bits, _ = shifted_bit_decomp(- x2, 1, "provided", edabits[1])
+            a = cint.bit_compose(a_bits)
+            b = cint.bit_compose(b_bits)
+            T = a + b
+            T_bits = cint.bit_decompose(T)
+            T_bits = T_bits + [cint(0)] * (BIT_LENGTH - len(T_bits))
+            half_prime = (PRIME // 2) + 1
+            carry2 = edabits[3] - ((T + half_prime) < (a + half_prime))
+            w1 = bit_less_than(a_bits, edabits[0][1])
+            w2 = bit_less_than(b_bits, edabits[1][1])
+            w3 = bit_less_than(T_bits, edabits[2])
+            w4 = carry2
+            return 1 - (w1 + w2 - w3 - w4)
+        if LOGMETHOD == "NISHIDE-OHTA":
+            z = 2*(x - y)
+            c_bits, _ = shifted_bit_decomp(z, 1, "provided", edabit[1])
+            c_bits = c_bits + [cint(0)] * (BIT_LENGTH - len(c_bits))
+            w = bit_less_than(c_bits, edabit[1])
+            xor = c_bits[0].bit_xor(edabit[1][0])
+            w_times_xor = w * xor
+            return w - 2 * w_times_xor + xor
+
+
+def less_than_zero(y):
+    return least_significant_bit(2*y)
+
+
+def shifted_bit_decomp(z, ARITY, var=None, var2=None):
+    if var == "provided":
+        r, r_bits = var2
+    else:
+        r, r_bits = rand_for_shift
+    c_bits = (z + r).reveal().bit_decompose(BIT_LENGTH)
+    return (c_bits, r_bits)
+
+
+def least_significant_bit(z):
+    c_bits, r_bits = shifted_bit_decomp(z, ARITY)
+    r_first_bit = r_bits[0][(1,) + (0,) * (ARITY - 1)]
+    w = 2*r_first_bit - 1
+    v = bit_less_than(c_bits, r_bits, w)
+    return c_bits[0] + (2*c_bits[0] - 1)*(v - r_first_bit)
+
+
+def bit_less_than(c_bits, z_bits, w=None):
+    if ROUNDS == "constant":
+        r, r_bits = rand_for_lsb
+        # could be further moved to preprocessing
+        extra_stuff = [w - 1, w*r_bits[0][0], w*r_bits[1]]
+        phi = comp_phi(c_bits, z_bits)
+        return lsb_bounded(phi, [r, r_bits], extra_stuff)
+    else:
+        [lts, eqs] = func_sharings(coeff_dics, c_bits, z_bits)
+        new_length = BIT_LENGTH_DIVIDED
+        while new_length > 1:
+            new_eq = [eqs[2*i]*eqs[2*i+1] for i in range(new_length//2)]
+            new_lts = [lts[2*i+1] + lts[2*i]*eqs[2*i+1]
+                       for i in range(new_length//2)]
+            if new_length % 2 == 1:
+                new_eq.append(eqs[-1])
+                new_lts.append(lts[-1])
+            eqs = new_eq
+            lts = new_lts
+            new_length = (new_length + 1) // 2
+        return lts[0]
+
+
+def lsb_bounded(z, rand, extra_stuff, w=None):
+    c_bits, r2_bits = shifted_bit_decomp(z, 1, "provided", rand)
+    return c_bits[0] * extra_stuff[0] + c_bits[-1] * c_bits[0].bit_xor(extra_stuff[1]) + (1 - c_bits[-1]) * c_bits[0].bit_xor(extra_stuff[2])
+
+
+def comp_phi(c_bits, z_bits):
+    [lts, neqs] = func_sharings(coeff_dics, c_bits, z_bits)
+    neqs_reversed = list(reversed([1 + x for x in neqs[1:]]))
+    products = prefix_product(neqs_reversed)
+    return lts[-1] + sum(products[-1 - i] * lts[i] for i in range(BIT_LENGTH_DIVIDED - 1))
+
+
+def prefix_product(factors):
+    number_of_factors = len(factors)
+    r, r2 = prefix_stuff
+    # takes 3 ROUNDS with shamir if --direct is not used, 2 otherwise
+    y = [(factors[i] * r2[i]).reveal() for i in range(number_of_factors)]
+    z = [y[0]]
+    for i in range(1, number_of_factors):
+        z.append(z[i-1] * y[i])
+    return [z[i] * r[i] for i in range(number_of_factors)]
+
+
+#########################################
+
+
+number_of_runs = 1
+
+prep_material = []
+
+if ROUNDS == "constant":
+    coeff_dics = one_time_function_preprocessing("constant")
+    for i in range(number_of_runs):
+        prep_material.append(preprocessing("constant", BIT_LENGTH))
+if ROUNDS == "log":
+    coeff_dics = one_time_function_preprocessing("log")
+    for i in range(number_of_runs):
+        prep_material.append(preprocessing("log", BIT_LENGTH))
+
+start_timer(1)
+
+for i in range(number_of_runs):
+    edabits = prep_material[i]
+    x = sint(2)
+    y = sint(1)
+    less_than(x, y)
+stop_timer(1)
