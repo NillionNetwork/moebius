@@ -37,10 +37,8 @@ def LTSfix(x, y):
 
 def LTS(x, y):
     edabit0, edabit1 = [sint.get_edabit(EDABIT_BIT_LENGTH, True) for i in range(2)]
-    b = y + edabit0[0]
-    a = edabit1[0] - x
-    a = a.reveal()
-    b = b.reveal()
+    b = (y + edabit0[0]).reveal()
+    a = (edabit1[0] - x).reveal()
     T = a + b
     w1 = LTBits(b, edabit0[1])
     w2 = LTBits(a, edabit1[1])
