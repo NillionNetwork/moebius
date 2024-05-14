@@ -16,8 +16,8 @@ Note that the authors also provided some code here: https://github.com/rdragos/M
 
 The current version of MP-SPDZ does not allow edaBits of the same bit-length as the prime
 bit-length; to get around this, Rabbit does compilation and execution separately:
-./compile.py rabbit -- --direct
-./Scripts/shamir.sh -P 18446744073709551557 rabbit---direct
+./compile.py rabbit
+./Scripts/shamir.sh -P 18446744073709551557 rabbit -- --direct
 Alternatively, disable this bit-length check in the MP-SPDZ source code.
 """
 
