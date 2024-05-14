@@ -36,6 +36,7 @@ def LTSfix(x, y):
 
 
 def LTS(x, y):
+    edabit0, edabit1 = [sint.get_edabit(EDABIT_BIT_LENGTH, True) for i in range(2)]
     b = y + edabit0[0]
     a = edabit1[0] - x
     a = a.reveal()
