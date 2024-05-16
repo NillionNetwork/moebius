@@ -29,7 +29,7 @@ if get_program().prime != None:
     PRIME = get_program().prime
 BIT_LENGTH = PRIME.bit_length()
 EDABIT_BIT_LENGTH = BIT_LENGTH
-HALF_PRIME = (PRIME // 2) + 1
+HALF_PRIME = PRIME // 2
 
 
 def LTSfix(x, y):
@@ -42,8 +42,8 @@ def LTS(x, y):
     a = (edabit1[0] - x).reveal()
     T = a + b
     w1 = LTBits(b, edabit0[1])
-    w2 = LTBits(a, edabit1[1])
-    w3 = (T + HALF_PRIME) < (b + HALF_PRIME)
+    w2 = LTBits(a - 1, edabit1[1])
+    w3 = (T - HALF_PRIME) < (b - HALF_PRIME)
     adder_result = BitAdder(edabit0[1], edabit1[1])
     w4 = adder_result[-1]
     w5 = LTBits(T, adder_result[:-1])
