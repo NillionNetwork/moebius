@@ -5,10 +5,10 @@ following draft:
 Wicher Malten, Mehmet Ugurbil, and Miguel de Vega. "More efficient comparison protocols for MPC."
 Cryptology ePrint Archive (2023). https://eprint.iacr.org/2023/1934
 
-./compile.py moebius -- --direct
-./Scripts/atlas.sh -P 18446744073709551557 moebius---direct
-./compile.py -R 64 moebius -- --direct
-./Scripts/ring.sh moebius---direct
+./compile.py moebius
+./Scripts/atlas.sh -P 18446744073709551557 moebius --direct
+./compile.py -R 64 moebius
+./Scripts/ring.sh moebius --direct
 """
 
 from Compiler.util import bit_compose, bit_decompose
@@ -19,6 +19,7 @@ PRIME = 18446744073709551557
 if get_program().prime != None:
     PRIME = get_program().prime
 BIT_LENGTH = PRIME.bit_length()
+half_prime = PRIME // 2
 
 ROUNDS = "log"
 
@@ -238,11 +239,11 @@ def less_than(x, x2):
             b_bits, _ = shifted_bit_decomp(- x2, 1, "provided", edabits[1])
             a = cint.bit_compose(a_bits)
             b = cint.bit_compose(b_bits)
+            b_bits_minus_one = cint.bit_decompose (cint.bit_compose(b_bits) - 1)
             T = a + b
             T_bits = cint.bit_decompose(T)
             T_bits = T_bits + [cint(0)] * (BIT_LENGTH - len(T_bits))
-            half_prime = (PRIME // 2) + 1
-            carry2 = edabits[3] - ((T + half_prime) < (a + half_prime))
+            carry2 = edabits[3] - ((T - half_prime) < (a - half_prime))
             w1 = bit_less_than(a_bits, edabits[0][1])
             w2 = bit_less_than(b_bits, edabits[1][1])
             w3 = bit_less_than(T_bits, edabits[2])
