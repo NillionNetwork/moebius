@@ -15,7 +15,7 @@ https://faui1-files.cs.fau.de/filepool/publications/octavian_securescm/SecureSCM
 Note that the authors also provided some code here: https://github.com/rdragos/MP-SPDZ/tree/rabbit
 
 The current version of MP-SPDZ does not allow edaBits of the same bit-length as the prime
-bit-length; to get around this, Rabbit does compilation and execution separately:
+bit-length; to get around this, Rabbit does compilation and execution separately.
 ./compile.py -R 64 rabbit
 ./Scripts/ring.sh rabbit --direct
 Alternatively, disable this bit-length check in the MP-SPDZ source code.
