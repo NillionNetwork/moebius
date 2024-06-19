@@ -48,7 +48,7 @@ def LTS(x, y):
     w4 = adder_result[-1]
     w5 = LTBits(T, adder_result[:-1])
     w = w1 + w2 + w3 - w4 - w5
-    return w
+    return sint(w)
 
 
 def carry(b, a, superfluous_parameter):  # page 45 in [1]
